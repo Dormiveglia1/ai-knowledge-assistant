@@ -1,0 +1,42 @@
+带有 @ 符号的语法叫做 装饰器（Decorator）
+不改动原代码的前提下，给函数动态增加新功能
+例：@app.get("/")
+
+.get()  HTTP GET 请求（通常用于获取数据，比如你在浏览器输入网址敲回车）
+("/") 代表根目录
+("/api/upload") 代表对应目录
+
+.post() 用于向后端送数据
+1. 接收纯文本/JSON 数据（最常用）
+
+def chat_with_ai(data: ChatQuery): 
+    # FastAPI 会自动把前端发的 JSON 转化为 data 对象
+    return {"message": f"你问了：{data.query}，限制字数：{data.max_tokens}"}
+
+2. 接收文件
+
+@app.post("/api/upload")
+def upload_pdf(file: UploadFile = File(...)):
+    # file.filename 能拿到文件名
+    # file.read() 能读到文件二进制内容
+    return {"filename": file.filename}
+
+3. 接收 URL 路径参数或查询参数
+
+@app.post("/api/user/{user_id}")
+def update_user_status(user_id: int, status: str):
+    return {"user_id": user_id, "status": status}
+
+
+还有put/patch改
+    delete 删
+
+
+
+app.add_middleware(
+    CORSMiddleware,         # 告诉 FastAPI 部署哪种安检闸机（这里是跨域安检）
+    allow_origins=["*"],    # 允许哪些网站来访问我？ ["*"] 是通配符，代表允许全世界任何域名的网页来向我发起请求。
+    allow_credentials=True, # 允许前端带上 Cookie 或者身份凭证吗
+    allow_methods=["*"],    # 允许前端使用哪些 HTTP 动作？
+    allow_headers=["*"],    # 允许前端在请求头里塞哪些自定义的额外信息？
+)

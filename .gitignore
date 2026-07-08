@@ -1,0 +1,18 @@
+# === Python Virtual Environment and Cache ===
+backend/venv/
+backend/.venv/
+**/__pycache__/
+*.pyc
+
+# === Top Secret (strictly prohibited from being uploaded)===
+backend/.env
+.env
+
+# === Database and big data files (kept locally, not included in the code repository)===
+backend/chroma_db/
+backend/uploaded_files/
+
+# === Node/ Frontend Dependencies and Packaging Cache ===
+# frontend/node_modules/
+# frontend/dist/
+# .DS_Store

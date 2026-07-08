@@ -1,0 +1,114 @@
+import os
+import chromadb
+from chromadb.utils import embedding_functions
+from dotenv import load_dotenv
+
+# Load the API Key that was configured in the .env file
+load_dotenv()
+
+class VectorStoreManager:
+    def __init__(self, db_path: str = "./chroma_db", collection_name: str = "kb_collection"):
+        """
+        Initialize the local ChromaDB database and the Embedding model
+        """
+        # 1. Initialize the local persistent ChromaDB client
+        self.client = chromadb.PersistentClient(path=db_path)
+        
+        # Reading the switches in the .env file
+        ai_mode = os.getenv("AI_MODE", "LOCAL").upper()
+
+        # 2. Configure the OpenAI Embedding engine (responsible for converting text into high-dimensional vector coordinates)
+        if ai_mode == "CLOUD":
+            api_key = os.getenv("CLOUD_API_KEY")
+            base_url = os.getenv("CLOUD_BASE_URL")
+            
+            # text-embedding-3-small model
+            self.embedding_fn = embedding_functions.OpenAIEmbeddingFunction(
+                api_key=api_key,
+                api_base=base_url if base_url else "https://api.openai.com/v1",
+                model_name="text-embedding-3-small"
+            )
+            print("🚀 The vector database has been successfully switched to: [Cloud-based OpenAI Mode]")
+        else:
+            # Local free offline mode
+            self.embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+            print("🔌 The vector database has been successfully switched to: [Fully offline local mode]")
+        
+        # 3. Create or retrieve a "table" (Collection) within a database
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            embedding_function=self.embedding_fn
+        )
+
+    def add_chunks(self, chunks: list[str], source_name: str):
+        """
+        Core method: Divide the text into segments, 
+        convert them into vectors in batches, 
+        and label them before storing them in the database.
+        """
+        if not chunks:
+            return
+            
+        # Generate a unique ID for each slice (for example: Resume_page1_chunk0)
+        ids = [f"{source_name}_chunk_{i}" for i in range(len(chunks))]
+        
+        # Prepare the metadata for each slice to facilitate future retrieval or filtering based on the file names.
+        metadatas = [{"source": source_name} for _ in range(len(chunks))]
+        
+        # Write to the database 
+        # (ChromaDB will automatically call the self.embedding_fn function at the lower level to transform the chunks into vectors)
+        self.collection.add(
+            documents=chunks,
+            ids=ids,
+            metadatas=metadatas
+        )
+        print(f"✅ Successfully vectorized and stored {len(chunks)} slices from [{source_name}] in the local database!")
+
+    def search_similar(self, query: str, top_k: int = 3, source_filter: str = None) -> list[dict]:
+        """
+        RAG Core Search: 
+        Input the user's question and retrieve the top_k most relevant text fragments from the database.
+        """
+        metadata_filter = {"source": source_filter} if source_filter else None
+
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=top_k,
+            where=metadata_filter
+        )
+        
+        # Reformat the output result to make it easier for the caller to read.
+        formatted_results = []
+        if results and results['documents']:
+            for i in range(len(results['documents'][0])):
+                formatted_results.append({
+                    "id": results['ids'][0][i],
+                    "text": results['documents'][0][i],
+                    "metadata": results['metadatas'][0][i],
+                    "distance": results['distances'][0][i] if 'distances' in results else None
+                })
+        return formatted_results
+
+# # === Module test entry ===
+# if __name__ == "__main__":
+#     # We used a few lines of dead code to test the "storage" and "retrieval" functions of the database.
+#     print("⏳ The test vector database is currently in the initialization process...")
+#     v_store = VectorStoreManager()
+    
+#     # Simulated slice data
+#     test_chunks = [
+#         "McMaster University is located in Hamilton, Ontario, Canada.",
+#         "The Honours Computer Science program at McMaster has a strong co-op component.",
+#         "FastAPI is a modern, fast Web framework for building APIs with Python."
+#     ]
+    
+#     # Test 1: Deposit
+#     v_store.add_chunks(test_chunks, source_name="test_doc.pdf")
+    
+#     # Test 2: Retrieve relevant information
+#     search_query = "Where is McMaster University?"
+#     print(f"\n🔍 Searching for the content that best matches '{search_query}'...")
+#     matched_data = v_store.search_similar(search_query, top_k=1)
+    
+#     for item in matched_data:
+#         print(f"🎯 Found the most similar content: {item['text']} (Matching relevance score: {item['distance']})")
