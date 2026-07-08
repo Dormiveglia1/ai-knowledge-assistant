@@ -106,3 +106,44 @@ async def chat_with_knowledge_base(request: ChatRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat service has encountered an error.: {str(e)}")
+
+@app.get("/api/files")
+async def get_uploaded_files():
+    """
+    Enables the front-end to obtain a list of all unique PDF file names in the current vector database.
+    """
+    try:
+        # Fetch all the metadata (Metadata) from the Collection of ChromaDB
+        existing_data = v_store.collection.get(include=["metadatas"])
+        
+        # Extract all unique file names
+        if existing_data and existing_data.get("metadatas"):
+            files = set(meta["source"] for meta in existing_data["metadatas"] if meta and "source" in meta)
+            return {"files": list(files)}
+        return {"files": []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to obtain the file list: {str(e)}")
+
+@app.delete("/api/files/{filename}")
+async def delete_document(filename: str):
+    """
+    One-click physical erasure of hard disk files and simultaneous cleaning of vector fragments in ChromaDB
+    """
+    try:
+        # 1. Linked Vector Database Module: Clean all the high-dimensional vector fragments in the database.
+        v_store.delete_file_chunks(filename)
+        
+        # 2. Remove the original PDF files saved in the local server's UPLOAD_DIR completely by using the associative physical hard drive.
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f" [Hard Disk Erasure] Successfully permanently deleted the original file [{filename}] from the physical hard drive!")
+        else:
+            print(f"⚠️ Warning: The file 【{filename}】 was not found on the physical hard drive. It might have been manually deleted, but the vector library has ensured it is completely cleaned.")
+            
+        return {
+            "status": "success",
+            "message": f"The document [{filename}] has been completely and securely uninstalled from both the local hard drive and the vector knowledge base!"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File unloading failed: {str(e)}")

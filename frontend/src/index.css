@@ -1,0 +1,29 @@
+/* 🌍 Global Layout Reset */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background-color: #f3f4f6;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 🎨 核心：强制所有 Lucide SVG 图标必须具备平滑的伸缩能力和默认行内对齐 */
+svg {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0; /* 防止图标在弹性盒子里被文字无情压扁 */
+}
+
+/* 🔄 针对我们左侧解析 Loader 的无限旋转动画特效定义 */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
