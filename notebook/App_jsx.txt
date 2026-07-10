@@ -1,0 +1,26 @@
+useState: React 提供的官方 Hook
+例：
+const [query, setQuery] = useState("");
+
+useState() 执行完后，其实会固定返回一个包含两个元素的数组：
+[当前最新的数据值, 修改数据的唯一专车函数]
+
+useState("")：代表 query 开机时是一个空字符串。
+
+useState(null)：代表 file 开机时什么都没有（空指针）。
+
+useState([])：代表 chatHistory 开机时是一个干净的空数组。
+
+
+
+==========================================================================
+
+useEffect 是 React 的“动作发动机”
+
+useEffect(() => {
+  fetchFiles();
+}, []);
+解读：
+当这个网页在浏览器上‘刚刚开机加载完成’（Mount）的那一瞬间，
+立刻、自动去执行一次 fetchFiles() 函数。而且，以后除非刷新网页，
+否则再也不要自动执行它了

@@ -1,0 +1,13 @@
+JWT（JSON Web Token）
+
+xxxxx.yyyyy.zzzzz
+
+第一段（Header - 头部）：xxxxx
+通常写着这串令牌的类型是 JWT，以及加密它所使用的数学算法
+
+第二段（Payload - 载荷）：yyyyy
+真正存放用户数据的“集装箱”
+
+第三段（Signature - 签名/物理防伪印章）：zzzzz
+后端把第一段的乱码 + 第二段的乱码拼接起来，
+再掏出锁在本地 .env 里的 JWT_SECRET,用 HS256 算法进行高维哈希计算，最终算出来的一串防伪乱码。

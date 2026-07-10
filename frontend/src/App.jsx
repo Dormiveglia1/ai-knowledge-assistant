@@ -1,20 +1,15 @@
+// npm run dev
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import {
-  Send,
-  Upload,
-  Bot,
-  User,
-  CheckCircle,
-  AlertCircle,
-  Loader,
-  Layers,
-  Cpu,
-  Trash2,
-} from "lucide-react";
+import { Bot, Cpu, Lock, User, KeyRound, ShieldAlert } from "lucide-react";
+
+// import the three core sharded parts
+import Workspace from "./components/Workspace";
+import ChatConsole from "./components/ChatConsole";
+import ChatInput from "./components/ChatInput";
 
 function App() {
-  // === State Management ===
+  // === 🧠 Central Brain State Control ===
   const [file, setFile] = useState(null);
   const [uploadStatus, setUploadStatus] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -22,30 +17,106 @@ function App() {
   const [query, setQuery] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [isChatting, setIsChatting] = useState(false);
-
-  // File isolation & management states
   const [availableFiles, setAvailableFiles] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(""); // Empty string means "Search All Files"
+  const [selectedFile, setSelectedFile] = useState("");
 
-  // Backend Api Base URL
   const BACKEND_URL = "http://localhost:8000";
 
-  // === Fetch & Synchronize File List from ChromaDB ===
+  // === 🔐 Authentication & Security States ===
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isRegisterMode, setIsRegisterMode] = useState(false); // Toggles between Login and Register views
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [currentUser, setCurrentUser] = useState("");
+
+  // 🛃 【无状态令牌提取机关】 Extract token bearer from disk storage sharding
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("rag_token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  // === ⚙️ Core Actions (Handlers) ===
   const fetchFiles = async () => {
     try {
-      const response = await axios.get(`${BACKEND_URL}/api/files`);
+      const response = await axios.get(`${BACKEND_URL}/api/files`, {
+        headers: getAuthHeaders(),
+      });
       setAvailableFiles(response.data.files || []);
     } catch (error) {
       console.error("Failed to fetch file list:", error);
+      // Force user out if token signatures are corrupted or expired
+      if (error.response?.status === 401) handleLogout();
     }
   };
 
-  // Sync files on initial component mount
+  // 👮 Boot-up validation sequence (Auto免登录安检)
   useEffect(() => {
-    fetchFiles();
-  }, []);
+    const savedToken = localStorage.getItem("rag_token");
+    const savedUser = localStorage.getItem("rag_user");
+    if (savedToken && savedUser) {
+      setIsAuthenticated(true);
+      setCurrentUser(savedUser);
+      fetchFiles();
+    }
+  }, [isAuthenticated]);
 
-  // Handle local file picker changes
+  // 🎫 Authentication Form Dispatcher (登录与注册提交控制枢纽)
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+
+    // Front-end early boundaries safety check matching backend constraints
+    if (authUsername.length < 3) {
+      setAuthError("❌ Username must be at least 3 characters.");
+      return;
+    }
+    if (authPassword.length < 6) {
+      setAuthError("❌ Password must be at least 6 characters.");
+      return;
+    }
+
+    const endpoint = isRegisterMode ? "/api/auth/register" : "/api/auth/login";
+
+    try {
+      const response = await axios.post(`${BACKEND_URL}${endpoint}`, {
+        username: authUsername,
+        password: authPassword,
+      });
+
+      if (isRegisterMode) {
+        // Condition A: Registration successful
+        alert(`✅ ${response.data.message}`);
+        setIsRegisterMode(false); // Pivot user automatically to login panel view
+        setAuthPassword("");
+      } else {
+        // Condition B: Login successful -> Persist payload permanently into browser storage
+        localStorage.setItem("rag_token", response.data.token);
+        localStorage.setItem("rag_user", response.data.username);
+        setCurrentUser(response.data.username);
+        setIsAuthenticated(true);
+        // Clear input credentials buffer for local security protection
+        setAuthUsername("");
+        setAuthPassword("");
+      }
+    } catch (error) {
+      // Catch and surface standard relational constraints errors from SQLite backend
+      setAuthError(
+        `❌ ${error.response?.data?.detail || "Authentication sequence disrupted."}`,
+      );
+    }
+  };
+
+  // 🗑️ One-Click physical session erasure
+  const handleLogout = () => {
+    localStorage.removeItem("rag_token");
+    localStorage.removeItem("rag_user");
+    setIsAuthenticated(false);
+    setCurrentUser("");
+    setChatHistory([]);
+    setAvailableFiles([]);
+  };
+
   const handleFileChange = (e) => {
     if (e.target.files.length > 0) {
       setFile(e.target.files[0]);
@@ -53,46 +124,37 @@ function App() {
     }
   };
 
-  // Interaction 1: Upload and trigger RAG ingestion (chunking & embedding)
   const handleUpload = async () => {
-    if (!file) {
-      setUploadStatus("❌ Please select a PDF file first!");
-      return;
-    }
-
+    if (!file) return;
+    setIsUploading(true);
+    setUploadStatus("⏳ Ingesting document into vector store, please wait...");
     const formData = new FormData();
     formData.append("file", file);
 
-    setIsUploading(true);
-    setUploadStatus("⏳ Ingesting document into vector store, please wait...");
-
     try {
       const response = await axios.post(`${BACKEND_URL}/api/upload`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "multipart/form-data",
+        },
       });
       setUploadStatus(`✅ Knowledge base updated successfully!`);
-
-      // Auto-refresh drop-down menu and automatically focus on the newly uploaded file
-      await fetchFiles();
+      fetchFiles();
       setSelectedFile(response.data.filename);
-      setFile(null); // Clear file input state after successful upload
+      setFile(null);
     } catch (error) {
-      console.error(error);
-      const errorMsg =
-        error.response?.data?.detail ||
-        "Ingestion failed. Check backend status.";
-      setUploadStatus(`❌ Error: ${errorMsg}`);
+      setUploadStatus(
+        `❌ Error: ${error.response?.data?.detail || "Ingestion failed."}`,
+      );
     } finally {
       setIsUploading(false);
     }
   };
 
-  // Interaction 2: Send User Query to the RAG backend (with active source filter)
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!query.trim()) return;
 
-    // Append user message to the conversation container
     const userMessage = { role: "user", text: query };
     setChatHistory((prev) => [...prev, userMessage]);
     const currentQuery = query;
@@ -100,69 +162,66 @@ function App() {
     setIsChatting(true);
 
     try {
-      // POST payload carrying query text and optional targeted file restriction
-      const response = await axios.post(`${BACKEND_URL}/api/chat`, {
-        query: currentQuery,
-        current_file: selectedFile || null,
-      });
+      const response = await axios.post(
+        `${BACKEND_URL}/api/chat`,
+        { query: currentQuery, current_file: selectedFile || null },
+        { headers: getAuthHeaders() },
+      );
 
-      // Append AI response along with retrieved ground-truth sources
-      const aiMessage = {
-        role: "assistant",
-        text: response.data.answer,
-        sources: response.data.sources,
-      };
-      setChatHistory((prev) => [...prev, aiMessage]);
-    } catch (error) {
-      console.error(error);
+      // 检查后端返回的数据结构是否匹配
       setChatHistory((prev) => [
         ...prev,
         {
           role: "assistant",
-          text: "❌ Error: Failed to retrieve answer from local LLM. Please verify backend uptime.",
+          text:
+            response.data.answer || response.data.response || "未收到回复文本",
+          sources: response.data.sources || [],
         },
+      ]);
+    } catch (error) {
+      // 🚨 关键：把真正的错误打印在控制台，不要吞掉
+      console.error("Chat API Error Detailed:", error);
+
+      // 提取后端的详细错误提示
+      const errorMessage =
+        error.response?.data?.detail || "Error connecting to local LLM.";
+
+      setChatHistory((prev) => [
+        ...prev,
+        { role: "assistant", text: `❌ ${errorMessage}` },
       ]);
     } finally {
       setIsChatting(false);
     }
   };
 
-  // Interaction 3: Delete/Evict target document from vector storage and file system
   const handleDeleteFile = async () => {
     if (!selectedFile) {
-      alert(
-        "Please select a specific file from the drop-down menu to delete.\nGlobal Search mode cannot be deleted.",
-      );
+      alert("Please select a specific file from the drop-down menu to delete.");
       return;
     }
-
     if (
       !window.confirm(
-        `⚠️ WARNING: Are you sure you want to completely evict [${selectedFile}] from both the database and server storage? This action cannot be undone.`,
+        `⚠️ WARNING: Are you sure you want to completely evict [${selectedFile}]?`,
       )
-    ) {
+    )
       return;
-    }
 
-    setUploadStatus(`⏳ Evicting [${selectedFile}] from vector store...`);
-
+    setUploadStatus(`⏳ Evicting [${selectedFile}]...`);
     try {
       const response = await axios.delete(
         `${BACKEND_URL}/api/files/${encodeURIComponent(selectedFile)}`,
+        { headers: getAuthHeaders() },
       );
       setUploadStatus(`✅ ${response.data.message}`);
-
-      // Reset target view and pull the fresh file index from backend
       setSelectedFile("");
-      await fetchFiles();
+      fetchFiles();
     } catch (error) {
-      console.error(error);
-      const errorMsg =
-        error.response?.data?.detail || "Failed to evict document.";
-      setUploadStatus(`❌ Error: ${errorMsg}`);
+      setUploadStatus(`❌ Error evicting document.`);
     }
   };
 
+  // === 🎨 Modern Modular Render Engine ===
   return (
     <div
       style={{
@@ -174,240 +233,23 @@ function App() {
         margin: 0,
         padding: 0,
         overflow: "hidden",
+        position: "relative", // Crucial for embedding authentication cover layers
       }}
     >
-      {/* 👈 Left Sidebar: Control Panel (Knowledge Base Management) */}
-      <div
-        style={{
-          width: "360px",
-          backgroundColor: "#ffffff",
-          borderRight: "1px solid #e5e7eb",
-          padding: "24px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "20px",
-          boxSizing: "border-box",
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <Layers size={28} color="#2563eb" />
-          <h2 style={{ margin: 0, fontSize: "20px", color: "#1f2937" }}>
-            RAG Workspace
-          </h2>
-        </div>
+      {/* 👈 Left Block: Workspace Component */}
+      <Workspace
+        file={file}
+        uploadStatus={uploadStatus}
+        isUploading={isUploading}
+        availableFiles={availableFiles}
+        selectedFile={selectedFile}
+        setSelectedFile={setSelectedFile}
+        handleFileChange={handleFileChange}
+        handleUpload={handleUpload}
+        handleDeleteFile={handleDeleteFile}
+      />
 
-        <p
-          style={{
-            fontSize: "13px",
-            color: "#6b7280",
-            margin: 0,
-            lineHeight: "1.5",
-          }}
-        >
-          Multi-document isolated RAG engine. Upload your knowledge assets below
-          and segment context domains effortlessly.
-        </p>
-
-        <hr
-          style={{
-            border: "none",
-            borderTop: "1px solid #f3f4f6",
-            margin: "4px 0",
-          }}
-        />
-
-        {/* 🎯 100% FORCE CORESIDENT CONTEXT SELECTOR ZONE */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-            width: "100%",
-          }}
-        >
-          <label
-            style={{ fontSize: "13px", fontWeight: "bold", color: "#4b5563" }}
-          >
-            Query Context Domain Target:
-          </label>
-
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              alignItems: "center",
-              width: "100%",
-            }}
-          >
-            {/* 🌐 Forced Persistent Selector Dropdown */}
-            <select
-              value={selectedFile}
-              onChange={(e) => setSelectedFile(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "10px",
-                borderRadius: "6px",
-                border: "1px solid #d1d5db",
-                backgroundColor: "#ffffff",
-                fontSize: "13px",
-                color: "#1f2937",
-                outline: "none",
-                cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                minWidth: "0",
-              }}
-            >
-              <option value="">🌐 Global Search (All Documents)</option>
-              {availableFiles &&
-                availableFiles.length > 0 &&
-                availableFiles.map((filename, idx) => (
-                  <option key={idx} value={filename}>
-                    📄 Only: {filename}
-                  </option>
-                ))}
-            </select>
-
-            {/* 🗑️ 100% Forced Persistent Trash Button */}
-            <button
-              onClick={handleDeleteFile}
-              type="button"
-              title="Evict this document permanently"
-              style={{
-                padding: "10px 12px",
-                backgroundColor: "#fef2f2",
-                color: "#dc2626",
-                border: "1px solid #fee2e2",
-                borderRadius: "6px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                transition: "all 0.15s",
-                flexShrink: 0,
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.backgroundColor = "#fee2e2";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.backgroundColor = "#fef2f2";
-              }}
-            >
-              <Trash2 size={16} color="#dc2626" />
-            </button>
-          </div>
-        </div>
-
-        <hr
-          style={{
-            border: "none",
-            borderTop: "1px solid #f3f4f6",
-            margin: "4px 0",
-          }}
-        />
-
-        {/* File Drag & Drop Upload Zone */}
-        <div
-          style={{
-            border: "2px dashed #d1d5db",
-            borderRadius: "8px",
-            padding: "20px",
-            textAlign: "center",
-            backgroundColor: "#fafafa",
-          }}
-        >
-          <input
-            type="file"
-            accept=".pdf"
-            onChange={handleFileChange}
-            id="pdf-file"
-            style={{ display: "none" }}
-          />
-          <label
-            htmlFor="pdf-file"
-            style={{
-              cursor: "pointer",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "8px",
-              color: "#4b5563",
-              fontSize: "13px",
-            }}
-          >
-            <Upload size={32} color="#9ca3af" />
-            <span style={{ wordBreak: "break-all", padding: "0 4px" }}>
-              {file ? file.name : "Choose a new PDF document"}
-            </span>
-          </label>
-        </div>
-
-        <button
-          onClick={handleUpload}
-          disabled={isUploading || !file}
-          style={{
-            width: "100%",
-            padding: "11px",
-            backgroundColor: file && !isUploading ? "#2563eb" : "#9ca3af",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
-            cursor: file && !isUploading ? "pointer" : "not-allowed",
-            fontWeight: "bold",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: "8px",
-            fontSize: "14px",
-          }}
-        >
-          {isUploading ? (
-            <Loader
-              size={18}
-              style={{ animation: "spin 1s linear infinite" }}
-            />
-          ) : null}
-          {isUploading ? "Ingesting Assets..." : "Inject into Vector DB"}
-        </button>
-
-        {/* Real-time Status Notification Feed */}
-        {uploadStatus && (
-          <div
-            style={{
-              padding: "12px",
-              borderRadius: "6px",
-              fontSize: "13px",
-              lineHeight: "1.4",
-              backgroundColor:
-                uploadStatus.includes("❌") || uploadStatus.includes("Error")
-                  ? "#fef2f2"
-                  : "#ecfdf5",
-              color:
-                uploadStatus.includes("❌") || uploadStatus.includes("Error")
-                  ? "#991b1b"
-                  : "#065f46",
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "6px",
-            }}
-          >
-            {uploadStatus.includes("❌") || uploadStatus.includes("Error") ? (
-              <AlertCircle
-                size={16}
-                style={{ flexShrink: 0, marginTop: "2px" }}
-              />
-            ) : (
-              <CheckCircle
-                size={16}
-                style={{ flexShrink: 0, marginTop: "2px" }}
-              />
-            )}
-            <span>{uploadStatus}</span>
-          </div>
-        )}
-      </div>
-
-      {/* 👉 Right Panel: AI Generation Console & Chat View */}
+      {/* 👉 Right Block: AI Agent Interactive Window */}
       <div
         style={{
           flex: 1,
@@ -417,7 +259,7 @@ function App() {
           height: "100%",
         }}
       >
-        {/* Top Header Navigation Strip */}
+        {/* Header Navigation Strip */}
         <div
           style={{
             height: "60px",
@@ -446,261 +288,310 @@ function App() {
               marginLeft: "auto",
               display: "flex",
               alignItems: "center",
-              gap: "6px",
-              fontSize: "12px",
-              color: "#6b7280",
-              backgroundColor: "#f3f4f6",
-              padding: "4px 10px",
-              borderRadius: "20px",
+              gap: "14px",
             }}
           >
-            <Cpu size={14} color="#10b981" />
-            <span>Dual-Drive Adaptive Core Connected</span>
-          </div>
-        </div>
+            {/* 🌟 Dynamic User identity tag & Sign Out action hook */}
+            {isAuthenticated && (
+              <div
+                style={{
+                  fontSize: "13px",
+                  color: "#4b5563",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <span
+                  style={{
+                    width: "8px",
+                    height: "8px",
+                    borderRadius: "50%",
+                    backgroundColor: "#10b981",
+                  }}
+                ></span>
+                <span>
+                  User: <b>{currentUser}</b>
+                </span>
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    marginLeft: "6px",
+                    padding: "2px 8px",
+                    border: "1px solid #d1d5db",
+                    borderRadius: "4px",
+                    backgroundColor: "#fff",
+                    cursor: "pointer",
+                    fontSize: "11px",
+                    color: "#ef4444",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            )}
 
-        {/* Chronological Chat Message Scroller */}
-        <div
-          style={{
-            flex: 1,
-            padding: "24px",
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: "20px",
-          }}
-        >
-          {chatHistory.length === 0 ? (
             <div
               style={{
                 display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "12px",
+                color: "#6b7280",
+                backgroundColor: "#f3f4f6",
+                padding: "4px 10px",
+                borderRadius: "20px",
+              }}
+            >
+              <Cpu size={14} color="#10b981" />
+              <span>Dual-Drive Adaptive Core Connected</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Console Content Scroller */}
+        <ChatConsole chatHistory={chatHistory} isChatting={isChatting} />
+
+        {/* Input Dock Bar */}
+        <ChatInput
+          query={query}
+          setQuery={setQuery}
+          handleSendMessage={handleSendMessage}
+          isChatting={isChatting}
+          selectedFile={selectedFile}
+        />
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 🔐 HIGH-TECH GLASSMORPHISM INTERCEPTOR CORDONS (磨砂玻璃城墙弹窗)        */}
+      {/* ========================================================================= */}
+      {!isAuthenticated && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: "rgba(243, 244, 246, 0.4)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              width: "380px",
+              backgroundColor: "#ffffff",
+              borderRadius: "16px",
+              boxShadow:
+                "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+              padding: "40px",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+              gap: "24px",
+              border: "1px solid #f3f4f6",
+            }}
+          >
+            <div
+              style={{
+                textAlign: "center",
+                display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                color: "#9ca3af",
                 gap: "10px",
               }}
             >
-              <Bot size={48} color="#cbd5e1" />
-              <p style={{ margin: 0, fontSize: "14px" }}>
-                System deployed. Upload documents or start asking global
-                semantic queries below!
-              </p>
-            </div>
-          ) : (
-            chatHistory.map((msg, index) => (
-              <div
-                key={index}
-                style={{
-                  display: "flex",
-                  gap: "12px",
-                  justifyContent:
-                    msg.role === "user" ? "flex-end" : "flex-start",
-                }}
-              >
-                {msg.role === "assistant" && (
-                  <div
-                    style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "50%",
-                      backgroundColor: "#dbeafe",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Bot size={20} color="#2563eb" />
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px",
-                    maxWidth: "75%",
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: "12px 16px",
-                      borderRadius: "12px",
-                      fontSize: "15px",
-                      lineHeight: "1.6",
-                      backgroundColor:
-                        msg.role === "user" ? "#2563eb" : "#ffffff",
-                      color: msg.role === "user" ? "#ffffff" : "#1f2937",
-                      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {msg.text}
-                  </div>
-
-                  {/* RAG Core Value: Document Traceability Block Sources */}
-                  {msg.role === "assistant" &&
-                    msg.sources &&
-                    msg.sources.length > 0 && (
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "6px",
-                          padding: "10px",
-                          backgroundColor: "#f3f4f6",
-                          borderRadius: "8px",
-                          fontSize: "12px",
-                          color: "#4b5563",
-                          border: "1px solid #e5e7eb",
-                        }}
-                      >
-                        <span style={{ fontWeight: "bold", color: "#374151" }}>
-                          🔍 Traceability Sources:
-                        </span>
-                        {msg.sources.map((src, sIdx) => (
-                          <div
-                            key={sIdx}
-                            style={{
-                              borderLeft: "3px solid #2563eb",
-                              paddingLeft: "8px",
-                              margin: "4px 0",
-                              lineHeight: "1.4",
-                            }}
-                          >
-                            <span
-                              style={{ fontWeight: "600", color: "#1f2937" }}
-                            >
-                              [{src.id.split("_chunk_")[0]}]
-                            </span>
-                            <span
-                              style={{ color: "#6b7280", marginLeft: "6px" }}
-                            >
-                              (Distance Score: {Number(src.score).toFixed(3)})
-                            </span>
-                            <p
-                              style={{
-                                margin: "2px 0 0 0",
-                                fontStyle: "italic",
-                              }}
-                            >
-                              "{src.text}"
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                </div>
-
-                {msg.role === "user" && (
-                  <div
-                    style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "50%",
-                      backgroundColor: "#2563eb",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <User size={20} color="#ffffff" />
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-          {isChatting && (
-            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
               <div
                 style={{
-                  width: "36px",
-                  height: "36px",
+                  width: "52px",
+                  height: "52px",
                   borderRadius: "50%",
-                  backgroundColor: "#dbeafe",
+                  backgroundColor: "#eff6ff",
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
                 }}
               >
-                <Bot size={20} color="#2563eb" />
+                <Lock size={24} color="#2563eb" />
               </div>
-              <span
+              <h2
                 style={{
-                  fontSize: "13px",
-                  color: "#9ca3af",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
+                  margin: 0,
+                  fontSize: "22px",
+                  fontWeight: "bold",
+                  color: "#1f2937",
                 }}
               >
-                <Loader
-                  size={14}
-                  style={{ animation: "spin 1s linear infinite" }}
-                />{" "}
-                Agent scanning vector database shards and synthesizing
-                response...
-              </span>
+                {isRegisterMode ? "Create RAG Account" : "RAG Secure Gateway"}
+              </h2>
+              <p style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
+                {isRegisterMode
+                  ? "Register rows to secure physical SQLite ledger partitions."
+                  : "Authentication required to establish database pipeline."}
+              </p>
             </div>
-          )}
-        </div>
 
-        {/* Bottom Context Command Input Bar */}
-        <div
-          style={{
-            padding: "20px",
-            backgroundColor: "#ffffff",
-            borderTop: "1px solid #e5e7eb",
-            flexShrink: 0,
-          }}
-        >
-          <form
-            onSubmit={handleSendMessage}
-            style={{ display: "flex", gap: "12px" }}
-          >
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={
-                selectedFile
-                  ? `Context locked onto [${selectedFile}]. Ask anything...`
-                  : "Submit global query across entire knowledge base..."
-              }
-              disabled={isChatting}
+            <form
+              onSubmit={handleAuthSubmit}
+              style={{ display: "flex", flexDirection: "column", gap: "16px" }}
+            >
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+              >
+                <span
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    color: "#4b5563",
+                  }}
+                >
+                  Username
+                </span>
+                <div style={{ position: "relative" }}>
+                  <User
+                    size={15}
+                    color="#9ca3af"
+                    style={{
+                      position: "absolute",
+                      left: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    required
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
+                    placeholder="min 3 characters"
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px 10px 36px",
+                      boxSizing: "border-box",
+                      borderRadius: "6px",
+                      border: "1px solid #d1d5db",
+                      outline: "none",
+                      fontSize: "14px",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: "6px" }}
+              >
+                <span
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    color: "#4b5563",
+                  }}
+                >
+                  Password
+                </span>
+                <div style={{ position: "relative" }}>
+                  <KeyRound
+                    size={15}
+                    color="#9ca3af"
+                    style={{
+                      position: "absolute",
+                      left: "12px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                    }}
+                  />
+                  <input
+                    type="password"
+                    required
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="min 6 characters"
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px 10px 36px",
+                      boxSizing: "border-box",
+                      borderRadius: "6px",
+                      border: "1px solid #d1d5db",
+                      outline: "none",
+                      fontSize: "14px",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {authError && (
+                <div
+                  style={{
+                    padding: "10px",
+                    backgroundColor: "#fef2f2",
+                    border: "1px solid #fee2e2",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    color: "#991b1b",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <ShieldAlert size={15} style={{ flexShrink: 0 }} />
+                  <span>{authError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                style={{
+                  width: "100%",
+                  padding: "11px",
+                  backgroundColor: "#2563eb",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "6px",
+                  fontWeight: "bold",
+                  fontSize: "14px",
+                  cursor: "pointer",
+                  marginTop: "6px",
+                }}
+              >
+                {isRegisterMode ? "Sign Up" : "Sign In"}
+              </button>
+            </form>
+
+            <div
               style={{
-                flex: 1,
-                padding: "12px 16px",
-                borderRadius: "6px",
-                border: "1px solid #d1d5db",
-                fontSize: "14px",
-                outline: "none",
-              }}
-            />
-            <button
-              type="submit"
-              disabled={isChatting || !query.trim()}
-              style={{
-                padding: "0 18px",
-                backgroundColor:
-                  query.trim() && !isChatting ? "#2563eb" : "#9ca3af",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                cursor: query.trim() && !isChatting ? "pointer" : "not-allowed",
-                display: "flex",
-                alignItems: "center",
-                justifyURI: "center",
+                textAlign: "center",
+                fontSize: "13px",
+                color: "#6b7280",
               }}
             >
-              <Send size={18} color="#ffffff" />
-            </button>
-          </form>
+              {isRegisterMode
+                ? "Already have an account? "
+                : "Don't have an account? "}
+              <span
+                onClick={() => {
+                  setIsRegisterMode(!isRegisterMode);
+                  setAuthError("");
+                }}
+                style={{
+                  color: "#2563eb",
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                {isRegisterMode ? "Sign In here" : "Sign Up here"}
+              </span>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+      {/* ========================================================================= */}
     </div>
   );
 }

@@ -2,8 +2,7 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
-
+load_dotenv(override=False)
 class LLMService:
     def __init__(self):
       ai_mode = os.getenv("AI_MODE", "LOCAL").upper()
@@ -22,7 +21,7 @@ class LLMService:
         # Connect the local Ollama
         api_key = os.getenv("OLLAMA_API_KEY", "ollama")
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-        self.client = OpenAI(api_key="ollama_key", base_url="http://localhost:11434/v1")
+        self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.default_model = "llama3:8b"
         print("🦙 The model has been switched to: [Local Offline Llama3]")
 

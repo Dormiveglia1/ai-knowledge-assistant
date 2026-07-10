@@ -1,0 +1,40 @@
+services:
+  # =========================================================================
+  # 🐍 BACKEND SERVICE CONTAINER (FastAPI + SQLite Core)
+  # =========================================================================
+  backend:
+    # 1. Direct Docker to look into the /backend directory to trigger its Dockerfile build sequence
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # 2. Map host port 8000 to container port 8000 so browser Axios hooks can communicate
+    ports:
+      - "8000:8000"
+    # 3. Environment Variables Injection: Passes secret tokens safely into the sandbox execution
+    environment:
+      - JWT_SECRET=8d5c91ea3cb67af234b852d6d53fac2418d9275db3379ef55f9847a9cfaaf7b3
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+      # If you use cloud models, you can inject variables like OPENAI_API_KEY here
+    # 4. Storage Persistence Volume Sharding
+    #    Maps the physical host directory to container sectors so your uploaded files and users.db WON'T disappear!
+    volumes:
+      - ./backend/uploaded_files:/app/uploaded_files
+      - ./backend/users.db:/app/users.db
+    # 5. Restart Policy: Automatically reboots the API thread if it encounters an unhandled runtime collapse
+    restart: always
+
+  # =========================================================================
+  # 🎨 FRONTEND SERVICE CONTAINER (React App Managed via Slim Production Nginx)
+  # =========================================================================
+  frontend:
+    # 1. Direct Docker to build using the multi-stage optimization rules inside /frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    # 2. Map standard web port 80 to Nginx's virtual gateway port 80
+    ports:
+      - "80:80"
+    # 3. Structural Constraint: Ensures the backend is fully provisioned before routing web assets
+    depends_on:
+      - backend
+    restart: always

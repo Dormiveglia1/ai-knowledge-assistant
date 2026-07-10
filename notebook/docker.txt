@@ -1,0 +1,1 @@
+docker compose up --build -d “一键全自动化部署总指挥”
