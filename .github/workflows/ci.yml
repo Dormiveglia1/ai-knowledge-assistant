@@ -18,9 +18,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest  # 确保安装了测试框架
+        working-directory: ./backend
+        run: pip install -r requirements.txt
+          pip install pytest
 
       - name: Run Tests
+        working-directory: ./backend
         run: pytest
