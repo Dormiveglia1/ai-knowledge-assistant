@@ -11,6 +11,7 @@ backend/.env
 # === Database and big data files (kept locally, not included in the code repository)===
 backend/chroma_db/
 backend/uploaded_files/
+backend/data/
 
 # === Node/ Frontend Dependencies and Packaging Cache ===
 frontend/node_modules/

@@ -20,7 +20,11 @@ function App() {
   const [availableFiles, setAvailableFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState("");
 
-  const BACKEND_URL = "http://localhost:8000";
+  // Vite replaces VITE_* variables at build time. Keeping a localhost fallback
+  // preserves the existing local-development workflow.
+  const BACKEND_URL = (
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"
+  ).replace(/\/$/, "");
 
   // === 🔐 Authentication & Security States ===
   const [isAuthenticated, setIsAuthenticated] = useState(false);

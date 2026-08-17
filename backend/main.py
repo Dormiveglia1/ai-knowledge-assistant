@@ -15,7 +15,9 @@ from ingestion import DocumentIngestor
 from vector_store import VectorStoreManager
 from llm_service import LLMService
 
-DB_PATH = "users.db"
+DATA_DIR = os.getenv("DATA_DIR", ".")
+os.makedirs(DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(DATA_DIR, "users.db")
 
 def init_db():
     """
@@ -55,21 +57,27 @@ class UserAuthSchema(BaseModel):
 app = FastAPI(title="AI Knowledge Assistant API")
 
 # Allow cross-domain requests (CORS), facilitating subsequent access by the front-end React (default port 5173) to the back-end (port 8000)
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # The development stage allows all sources, while the production environment requires restrictions.
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Initialize the slice tool
 ingestor = DocumentIngestor(chunk_size=600, chunk_overlap=120)
-v_store = VectorStoreManager()  # By default, the "chroma_db" folder will be created in the current directory.
+v_store = VectorStoreManager(db_path=os.path.join(DATA_DIR, "chroma_db"))
 ai_engine = LLMService()
 
 # Create a temporary directory for uploading files
-UPLOAD_DIR = "./uploaded_files"
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploaded_files")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 class ChatRequest(BaseModel):
