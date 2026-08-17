@@ -2,6 +2,8 @@
 
 A full-stack, RAG-powered knowledge-base assistant for uploading PDF documents and answering questions using retrieved, traceable source context.
 
+**Live Demo:** [https://ai-knowledge-assistant-web.onrender.com](https://ai-knowledge-assistant-web.onrender.com)
+
 ## Highlights
 
 - PDF ingestion, bilingual text chunking, and ChromaDB vector search
