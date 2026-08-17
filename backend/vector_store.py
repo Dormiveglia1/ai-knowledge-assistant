@@ -21,6 +21,12 @@ class VectorStoreManager:
         if ai_mode == "CLOUD":
             api_key = os.getenv("CLOUD_API_KEY")
             base_url = os.getenv("CLOUD_BASE_URL")
+
+            # Chroma's OpenAI embedding wrapper also reads this conventional
+            # variable internally. Reuse the configured cloud key without
+            # requiring a second hosted secret.
+            if api_key and not os.getenv("CHROMA_OPENAI_API_KEY"):
+                os.environ["CHROMA_OPENAI_API_KEY"] = api_key
             
             # text-embedding-3-small model
             self.embedding_fn = embedding_functions.OpenAIEmbeddingFunction(
