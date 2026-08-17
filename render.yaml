@@ -19,6 +19,11 @@ services:
         generateValue: true
       - key: CLOUD_API_KEY
         sync: false
+      - key: CHROMA_OPENAI_API_KEY
+        fromService:
+          type: web
+          name: ai-knowledge-assistant-api
+          envVarKey: CLOUD_API_KEY
       - key: CLOUD_BASE_URL
         value: https://api.openai.com/v1
       - key: CORS_ORIGINS
